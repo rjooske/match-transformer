@@ -1,0 +1,20 @@
+{
+  "name": "transformer-playground",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsc && node --enable-source-maps out/index.js",
+    "test": "tspc src/test.ts && node --enable-source-maps out/test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "ts-node": "^10.9.2",
+    "ts-patch": "^3.2.1",
+    "typescript": "^5.5.4",
+    "@types/ts-expose-internals": "npm:ts-expose-internals@5.5.4"
+  }
+}
