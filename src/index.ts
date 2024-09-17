@@ -38,15 +38,11 @@ type Literal =
   | { kind: "number"; value: number }
   | { kind: "string"; value: string }
   | { kind: "boolean"; value: boolean }
-  | { kind: "bigint"; value: ts.PseudoBigInt };
+  | { kind: "bigint"; value: ts.PseudoBigInt }
+  | { kind: "undefined" }
+  | { kind: "null" };
 
-type Primitive =
-  | "string"
-  | "number"
-  | "bigint"
-  | "boolean"
-  | "undefined"
-  | "null";
+type Primitive = "string" | "number" | "bigint" | "boolean";
 
 type CheckableType =
   | { kind: "unknown" }
@@ -168,25 +164,24 @@ function createTests(
             ? ts.factory.createTrue()
             : ts.factory.createFalse();
           break;
+        case "undefined":
+          literal = ts.factory.createIdentifier("undefined");
+          break;
+        case "null":
+          literal = ts.factory.createNull();
+          break;
       }
       return [[], ts.factory.createStrictEquality(testee, literal)];
     }
 
     case "primitive": {
-      if (targetType.primitive === "null") {
-        return [
-          [],
-          ts.factory.createStrictEquality(testee, ts.factory.createNull()),
-        ];
-      } else {
-        return [
-          [],
-          ts.factory.createStrictEquality(
-            ts.factory.createTypeOfExpression(testee),
-            ts.factory.createStringLiteral(targetType.primitive),
-          ),
-        ];
-      }
+      return [
+        [],
+        ts.factory.createStrictEquality(
+          ts.factory.createTypeOfExpression(testee),
+          ts.factory.createStringLiteral(targetType.primitive),
+        ),
+      ];
     }
 
     // TODO: use switch?
@@ -376,12 +371,41 @@ function unreachable(_: never): never {
 }
 
 function getBooleanLiteralValue(type: ts.Type): boolean | undefined {
-  if (!(type.flags & ts.TypeFlags.BooleanLiteral)) {
+  if (!(type.getFlags() & ts.TypeFlags.BooleanLiteral)) {
     return undefined;
   }
   assert("intrinsicName" in type);
   assert(type.intrinsicName === "true" || type.intrinsicName === "false");
   return type.intrinsicName === "true";
+}
+
+function tsTypeToLiteral(type: ts.Type): Literal | undefined {
+  if (type.isLiteral()) {
+    switch (typeof type.value) {
+      case "number":
+        return { kind: "number", value: type.value };
+      case "string":
+        return { kind: "string", value: type.value };
+      case "object":
+        return { kind: "bigint", value: type.value };
+      default:
+        unreachable(type.value);
+    }
+  }
+
+  const booleanLiteralValue = getBooleanLiteralValue(type);
+  if (booleanLiteralValue !== undefined) {
+    return { kind: "boolean", value: booleanLiteralValue };
+  }
+
+  const typeFlags = type.getFlags();
+  if (typeFlags & ts.TypeFlags.Undefined) {
+    return { kind: "undefined" };
+  } else if (typeFlags & ts.TypeFlags.Null) {
+    return { kind: "null" };
+  }
+
+  return undefined;
 }
 
 function isObjectType(type: ts.Type): type is ts.ObjectType {
@@ -392,30 +416,9 @@ function tsTypeToCheckableType(
   typeChecker: ts.TypeChecker,
   type: ts.Type,
 ): CheckableType | undefined {
-  if (type.isLiteral()) {
-    let literal: Literal;
-    switch (typeof type.value) {
-      case "number":
-        literal = { kind: "number", value: type.value };
-        break;
-      case "string":
-        literal = { kind: "string", value: type.value };
-        break;
-      case "object":
-        literal = { kind: "bigint", value: type.value };
-        break;
-      default:
-        unreachable(type.value);
-    }
+  const literal = tsTypeToLiteral(type);
+  if (literal !== undefined) {
     return { kind: "literal", literal };
-  }
-
-  const booleanLiteralValue = getBooleanLiteralValue(type);
-  if (booleanLiteralValue !== undefined) {
-    return {
-      kind: "literal",
-      literal: { kind: "boolean", value: booleanLiteralValue },
-    };
   }
 
   const typeFlags = type.getFlags();
@@ -429,10 +432,6 @@ function tsTypeToCheckableType(
     return { kind: "primitive", primitive: "boolean" };
   } else if (typeFlags & ts.TypeFlags.BigInt) {
     return { kind: "primitive", primitive: "bigint" };
-  } else if (typeFlags & ts.TypeFlags.Undefined) {
-    return { kind: "primitive", primitive: "undefined" };
-  } else if (typeFlags & ts.TypeFlags.Null) {
-    return { kind: "primitive", primitive: "null" };
   }
 
   // TODO: intersection
@@ -615,7 +614,6 @@ export default (
     // return ts.visitNode(sourceFile, visitor, ts.isSourceFile);
     sourceFile = ts.visitNode(sourceFile, visitor, ts.isSourceFile);
     console.log(ts.createPrinter().printFile(sourceFile));
-    process.exit(0);
 
     return sourceFile;
   };
