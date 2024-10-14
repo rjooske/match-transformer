@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2020",
+    "declaration": true,
     "plugins": [
       {
         "transform": "./src/index.ts"

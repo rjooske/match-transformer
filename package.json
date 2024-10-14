@@ -1,8 +1,10 @@
 {
   "name": "transformer-playground",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "out/index.js",
+  "types": "out/index.d.js",
   "scripts": {
+    "build": "tsc",
     "start": "tsc && node --enable-source-maps out/index.js",
     "test": "tspc src/test.ts && node --enable-source-maps out/test.js"
   },
