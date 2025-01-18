@@ -1,10 +1,10 @@
-import ts from "typescript";
 import { DecisionTree } from "./decision-tree";
+import { createEiife } from "./eiife";
+import { MatchTable } from "./match-table";
 import { Literal, Occurrence, Type, Union, unionFlatten } from "./type";
 import { exactlyOne, map, unreachable } from "./util";
 import assert from "assert";
-import { MatchTable } from "./match-table";
-import { createEiife } from "./eiife";
+import ts from "typescript";
 
 function isTupleType(
   typeChecker: ts.TypeChecker,

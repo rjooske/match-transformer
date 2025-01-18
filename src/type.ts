@@ -1,5 +1,5 @@
-import ts from "typescript";
 import { map, unreachable, zip } from "./util";
+import ts from "typescript";
 
 export type Literal =
   | { kind: "number"; value: number }

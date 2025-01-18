@@ -1,5 +1,5 @@
-import assert from "assert";
 import { Hasher, HashMap } from "../hash-map";
+import assert from "assert";
 
 type Key = { a: number; b: boolean; c: string };
 

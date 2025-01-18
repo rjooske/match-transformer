@@ -1,4 +1,3 @@
-import assert from "assert";
 import {
   MatchTable,
   matchTableColumnCount,
@@ -19,6 +18,7 @@ import {
   unionReplaceAt,
 } from "./type";
 import { exactlyOne } from "./util";
+import assert from "assert";
 
 export type DecisionTree =
   | { kind: "fail" }

@@ -1,5 +1,5 @@
-import assert from "assert";
 import { match } from "./match";
+import assert from "assert";
 
 function literals(x: unknown): number {
   return match(x)

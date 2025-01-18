@@ -13,10 +13,11 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^5.2.1",
     "@types/node": "^22.5.4",
+    "@types/ts-expose-internals": "npm:ts-expose-internals@5.5.4",
     "ts-node": "^10.9.2",
     "ts-patch": "^3.2.1",
-    "typescript": "^5.5.4",
-    "@types/ts-expose-internals": "npm:ts-expose-internals@5.5.4"
+    "typescript": "^5.5.4"
   }
 }

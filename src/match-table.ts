@@ -1,4 +1,3 @@
-import assert from "assert";
 import {
   Occurrence,
   Type,
@@ -13,6 +12,7 @@ import {
   typeAccessUnion,
 } from "./type";
 import { cartesianProduct, every, exactlyOne, zip } from "./util";
+import assert from "assert";
 
 export type MatchTable = {
   input: Union;

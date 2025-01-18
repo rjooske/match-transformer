@@ -1,9 +1,9 @@
-import ts from "typescript";
-import { TransformerExtras, PluginConfig } from "ts-patch";
 import { decisionTreeToExpression, nodeToMatch } from "./ast";
 import { decisionTreeCompile } from "./decision-tree";
-import { matchTableExpand, matchTableRemove } from "./match-table";
 import { replaceEiifes } from "./eiife";
+import { matchTableExpand, matchTableRemove } from "./match-table";
+import { TransformerExtras, PluginConfig } from "ts-patch";
+import ts from "typescript";
 
 export { match } from "./match";
 
