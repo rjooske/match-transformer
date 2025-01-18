@@ -258,12 +258,27 @@ export function nodeToMatch(
         return f(callee.expression);
       }
     } else if (ts.isIdentifier(callee) && callee.text === "match") {
+      const signature = typeChecker.getResolvedSignature(node);
+      if (
+        !(
+          signature !== undefined &&
+          signature.mapper !== undefined &&
+          signature.mapper.kind === ts.TypeMapKind.Simple
+        )
+      ) {
+        return undefined;
+      }
+      const input = tsTypeToUnion(typeChecker, signature.mapper.target);
+      if (input === undefined) {
+        return undefined;
+      }
+
       patterns.reverse();
       caseBodies.reverse();
+
       return {
         table: {
-          // TODO
-          input: [{ kind: "unknown" }],
+          input,
           occurrences: [[]],
           caseIndices: patterns.map((_, i) => i),
           patternRows: patterns.map((p) => [p]),
@@ -429,6 +444,8 @@ export function decisionTreeToExpression(
     return ts.factory.createPrefixMinus(ts.factory.createNumericLiteral(1));
   } else if (d.kind === "success") {
     return ts.factory.createNumericLiteral(d.caseIndex);
+  } else if (d.kind === "skip") {
+    return decisionTreeToExpression(d.next, testee);
   }
 
   return ts.factory.createConditionalExpression(

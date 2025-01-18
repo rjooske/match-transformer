@@ -10,7 +10,14 @@ import {
   matchTableSpecializeSuccess,
   matchTableSuccessCaseIndex,
 } from "./match-table";
-import { Occurrence, Type, typeMakeArgumentsUnknown, typeMinima } from "./type";
+import {
+  Occurrence,
+  Type,
+  typeMakeArgumentsUnknown,
+  typeMinima,
+  unionIsSubtype,
+  unionReplaceAt,
+} from "./type";
 import { exactlyOne } from "./util";
 
 export type DecisionTree =
@@ -22,7 +29,8 @@ export type DecisionTree =
       occurrence: Occurrence;
       success: DecisionTree;
       fail: DecisionTree;
-    };
+    }
+  | { kind: "skip"; next: DecisionTree };
 
 type Check = {
   type: Type;
@@ -62,6 +70,12 @@ function possibleChecks(m: MatchTable): Check[] | undefined {
   return checks;
 }
 
+function isCheckSkippable(m: MatchTable, c: Check): boolean {
+  const o = m.occurrences[c.columnIndex];
+  const newInput = unionReplaceAt(m.input, o, [c.type]);
+  return unionIsSubtype(m.input, newInput);
+}
+
 export function decisionTreeCompile(m: MatchTable): DecisionTree {
   if (matchTableIsFail(m)) {
     return { kind: "fail" };
@@ -75,9 +89,21 @@ export function decisionTreeCompile(m: MatchTable): DecisionTree {
   const checks = possibleChecks(m);
   assert(checks !== undefined);
   assert(checks.length > 0);
+
+  const skippableChecks = checks.filter((c) => isCheckSkippable(m, c));
+  if (skippableChecks.length > 0) {
+    console.log("skippable checks:");
+    console.dir(skippableChecks, { depth: Infinity });
+    // TODO
+    const c =
+      skippableChecks[Math.floor(skippableChecks.length * Math.random())];
+    const next = matchTableSpecializeSuccess(m, c.type, c.columnIndex);
+    assert(next !== undefined);
+    return { kind: "skip", next: decisionTreeCompile(next) };
+  }
+
   // TODO
   const bestCheck = checks[Math.floor(checks.length * Math.random())];
-
   const specializedSuccessTable = matchTableSpecializeSuccess(
     m,
     bestCheck.type,
