@@ -94,7 +94,7 @@ function tuples(x: unknown): number {
   return match(x)
     .returns<number>()
     .case<[string, string, string]>(() => 0)
-    .case<[unknown, number?]>(() => 1)
+    .case<[unknown, number]>(() => 1)
     .default(() => 2);
 }
 
@@ -102,9 +102,9 @@ function testTuples() {
   const tests = [
     [["a", "b", "c"], 0],
     [["a", "b", "c", "d"], 2],
-    [[8], 1],
+    [[8], 2],
     [["7", 7], 1],
-    [[false, undefined], 1],
+    [[false, undefined], 2],
     [[], 2],
     [{ id: 789 }, 2],
   ];
@@ -119,8 +119,8 @@ function unions(x: unknown): number {
     .returns<number>()
     .case<boolean | number>(() => 0)
     .case<string | undefined>(() => 1)
-    .case<string | "foo" | unknown>(() => 2);
-  // ↑ the type reduces to unknown, making it effectively the default case
+    .case<string | "foo" | unknown>(() => 2)
+    .default(() => 3);
 }
 
 function testUnions() {
@@ -145,7 +145,7 @@ function objects(x: unknown): number {
     .returns<number>()
     .case<{ a: "A" }>(() => 0)
     .case<{ b: number | number[] }>(() => 1)
-    .case<{ c: [string | boolean, boolean, number?] }>(() => 2)
+    .case<{ c: [string | boolean, boolean] }>(() => 2)
     .case<{ kind: "ok"; message: string } | { kind: "err"; code: number }>(
       () => 3,
     )
@@ -158,8 +158,8 @@ function testObjects() {
     [{ b: [6, 5] }, 1],
     [{ b: 1 }, 1],
     [{ c: [false, true] }, 2],
-    [{ c: ["foo", false, undefined] }, 2],
-    [{ c: ["bar", true, 2] }, 2],
+    [{ c: ["foo", false] }, 2],
+    [{ c: ["bar", true] }, 2],
     [{ kind: "ok", message: "hello world" }, 3],
     [{ kind: "err", code: 3 }, 3],
     [{ kind: "err", code: 3, reason: "who knows" }, 3],
