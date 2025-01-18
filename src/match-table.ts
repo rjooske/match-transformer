@@ -101,8 +101,6 @@ export function matchTableSpecializeSuccess(
     }
     for (const [, accessor] of typeArguments) {
       const union = typeAccessUnion(patternType, accessor);
-      console.dir(patternType, { depth: Infinity });
-      console.dir(accessor, { depth: Infinity });
       assert(union !== undefined);
       newRow.push(union);
     }

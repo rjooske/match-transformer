@@ -1,9 +1,10 @@
 import ts from "typescript";
 import { DecisionTree } from "./decision-tree";
 import { Literal, Occurrence, Type, Union, unionFlatten } from "./type";
-import { exactlyOne, map, todo, unreachable } from "./util";
+import { exactlyOne, map, unreachable } from "./util";
 import assert from "assert";
 import { MatchTable } from "./match-table";
+import { createEiife } from "./eiife";
 
 function isTupleType(
   typeChecker: ts.TypeChecker,
@@ -139,8 +140,17 @@ function tsTypeToUnion(
     return [{ kind: "tuple", elements }];
   }
 
-  // Check if the type is object AFTER checking if the type is array or tuple
-  // since Array<T> is an object as well
+  const recordType = getRecordType(t);
+  if (recordType !== undefined) {
+    const value = tsTypeToUnion(typeChecker, recordType.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return [{ kind: "record", value }];
+  }
+
+  // Check if the type is object AFTER checking if the type is array, tuple, or
+  // record since they an object type as well
   if (isObjectType(t)) {
     const fields = new Map<string, Union>();
     for (const symbol of t.getProperties()) {
@@ -162,14 +172,45 @@ function tsTypeToUnion(
     for (const child of t.types) {
       const union = tsTypeToUnion(typeChecker, child);
       if (union === undefined) {
-        console.log("here");
-        console.log(typeChecker.typeToString(child));
         return undefined;
       }
       unions.push(union);
     }
     return unionFlatten(unions);
   }
+}
+
+function isTypeScriptLibFile(path: string): boolean {
+  return path.match(/typescript\/lib\/lib.*\.d\.ts$/) !== null;
+}
+
+type RecordType = { key: ts.Type; value: ts.Type };
+
+function getRecordType(t: ts.Type): RecordType | undefined {
+  if (
+    !(
+      t.aliasSymbol !== undefined &&
+      t.aliasSymbol.getName() === "Record" &&
+      t.aliasSymbol.declarations !== undefined &&
+      t.aliasTypeArguments !== undefined &&
+      t.aliasTypeArguments.length === 2
+    )
+  ) {
+    return undefined;
+  }
+
+  const declaration = exactlyOne(t.aliasSymbol.declarations);
+  if (
+    !(
+      declaration !== undefined &&
+      ts.isSourceFile(declaration.parent) &&
+      isTypeScriptLibFile(declaration.parent.path)
+    )
+  ) {
+    return undefined;
+  }
+
+  return { key: t.aliasTypeArguments[0], value: t.aliasTypeArguments[1] };
 }
 
 type Match = {
@@ -317,21 +358,20 @@ function createTestAtOccurrence(
         ts.factory.createElementAccessExpression(testee, a.index),
       );
     case "array-element": {
-      const arg = ts.factory.createTempVariable(undefined, true);
+      const param = ts.factory.createTempVariable(undefined, true);
       const loopVar = ts.factory.createTempVariable(undefined, true);
-      const arrow = ts.factory.createArrowFunction(
-        undefined,
-        undefined,
-        [ts.factory.createParameterDeclaration(undefined, undefined, arg)],
-        undefined,
-        undefined,
-        ts.factory.createBlock([
+      return createEiife({
+        parameters: [
+          ts.factory.createParameterDeclaration(undefined, undefined, param),
+        ],
+        arguments: [testee],
+        statements: [
           ts.factory.createForOfStatement(
             undefined,
             ts.factory.createVariableDeclarationList([
               ts.factory.createVariableDeclaration(loopVar),
             ]),
-            arg,
+            param,
             ts.factory.createIfStatement(
               ts.factory.createLogicalNot(
                 createTestAtOccurrence(t, o, loopVar),
@@ -340,22 +380,18 @@ function createTestAtOccurrence(
             ),
           ),
           ts.factory.createReturnStatement(ts.factory.createTrue()),
-        ]),
-      );
-      return ts.factory.createCallExpression(arrow, undefined, [testee]);
+        ],
+      });
     }
-    case "record-keys":
-      todo();
     case "record-values": {
-      const arg = ts.factory.createTempVariable(undefined, true);
+      const param = ts.factory.createTempVariable(undefined, true);
       const loopVar = ts.factory.createTempVariable(undefined, true);
-      const arrow = ts.factory.createArrowFunction(
-        undefined,
-        undefined,
-        [ts.factory.createParameterDeclaration(undefined, undefined, arg)],
-        undefined,
-        undefined,
-        ts.factory.createBlock([
+      return createEiife({
+        parameters: [
+          ts.factory.createParameterDeclaration(undefined, undefined, param),
+        ],
+        arguments: [testee],
+        statements: [
           ts.factory.createForOfStatement(
             undefined,
             ts.factory.createVariableDeclarationList([
@@ -367,7 +403,7 @@ function createTestAtOccurrence(
                 "values",
               ),
               undefined,
-              [arg],
+              [param],
             ),
             ts.factory.createIfStatement(
               ts.factory.createLogicalNot(
@@ -377,9 +413,8 @@ function createTestAtOccurrence(
             ),
           ),
           ts.factory.createReturnStatement(ts.factory.createTrue()),
-        ]),
-      );
-      return ts.factory.createCallExpression(arrow, undefined, [testee]);
+        ],
+      });
     }
     default:
       unreachable(a);

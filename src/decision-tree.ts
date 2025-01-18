@@ -10,7 +10,7 @@ import {
   matchTableSpecializeSuccess,
   matchTableSuccessCaseIndex,
 } from "./match-table";
-import { Occurrence, Type, typeMinima } from "./type";
+import { Occurrence, Type, typeMakeArgumentsUnknown, typeMinima } from "./type";
 import { exactlyOne } from "./util";
 
 export type DecisionTree =
@@ -46,9 +46,17 @@ function possibleChecks(m: MatchTable): Check[] | undefined {
       column.push(patternType);
     }
 
-    for (const type of typeMinima(column)) {
-      checks.push({ type, columnIndex: j });
+    // for (const type of typeMinima(column)) {
+    //   checks.push({ type, columnIndex: j });
+    // }
+    const firstMinimum = typeMinima(column).at(0);
+    if (firstMinimum === undefined) {
+      return undefined;
     }
+    checks.push({
+      type: typeMakeArgumentsUnknown(firstMinimum),
+      columnIndex: j,
+    });
   }
 
   return checks;

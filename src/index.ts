@@ -1,9 +1,9 @@
-import assert from "assert";
 import ts from "typescript";
 import { TransformerExtras, PluginConfig } from "ts-patch";
 import { decisionTreeToExpression, nodeToMatch } from "./ast";
 import { decisionTreeCompile } from "./decision-tree";
 import { matchTableExpand, matchTableRemove } from "./match-table";
+import { replaceEiifes } from "./eiife";
 
 export { match } from "./match";
 
@@ -24,10 +24,6 @@ export default (
         const decisionTree = decisionTreeCompile(cleanedUpTable);
         const testee = ts.factory.createTempVariable(undefined, true);
         const expression = decisionTreeToExpression(decisionTree, testee);
-
-        console.log();
-        console.dir(match.table, { depth: Infinity });
-        console.dir(decisionTree, { depth: Infinity });
 
         const clauses: ts.CaseOrDefaultClause[] = [];
         for (let i = 0; i < match.caseBodies.length; i++) {
@@ -80,12 +76,13 @@ export default (
       return ts.visitEachChild(node, visitor, context);
     }
 
-    // return ts.visitNode(sourceFile, visitor, ts.isSourceFile);
     sourceFile = ts.visitNode(sourceFile, visitor, ts.isSourceFile);
+    sourceFile = replaceEiifes(sourceFile, context);
+
     console.log(ts.createPrinter().printFile(sourceFile));
-    // if (sourceFile.fileName.endsWith("test.ts")) {
-    //   process.exit(0);
-    // }
+    if (sourceFile.fileName.includes("debug")) {
+      process.exit(0);
+    }
 
     return sourceFile;
   };

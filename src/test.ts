@@ -140,6 +140,31 @@ function testUnions() {
   }
 }
 
+function records(x: unknown): number {
+  return match(x)
+    .returns<number>()
+    .case<Record<string, boolean>>(() => 0)
+    .case<Record<string, [1, 2]>>(() => 1)
+    .case<Record<string, "foo">>(() => 2)
+    .default(() => -1);
+}
+
+function testRecords() {
+  const tests = [
+    [{ yes: true, no: false }, 0],
+    [{ yes: true, no: false, 42: true }, 0],
+    [{}, 0],
+    [{ one: [1, 2], two: [1, 2] }, 1],
+    [{ a: "foo", b: "foo", c: "foo" }, 2],
+    [{ foo: "bar" }, -1],
+    [999, -1],
+  ];
+  for (const [input, want] of tests) {
+    const got = records(input);
+    assert(got === want);
+  }
+}
+
 function objects(x: unknown): number {
   return match(x)
     .returns<number>()
@@ -204,6 +229,7 @@ function main() {
   testArrays();
   testTuples();
   testUnions();
+  testRecords();
   testObjects();
   testUseTestee();
 }

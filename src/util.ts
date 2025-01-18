@@ -3,7 +3,7 @@ export function unreachable(_: never): never {
 }
 
 export function todo(message?: string): never {
-  throw new Error("TODO: " + message);
+  throw new Error(message === undefined ? "TODO" : "TODO: " + message);
 }
 
 export function exactlyOne<T>(ts: Iterable<T>): T | undefined {

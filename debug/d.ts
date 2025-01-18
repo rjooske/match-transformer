@@ -17,6 +17,9 @@ function d() {
   const m__: string | "foo" = "a";
   const n__: string | "foo" | unknown = "a";
 
+  type List = { kind: "nil" } | { kind: "cons"; next: List; element: string };
+  const list__: List = 0 as any;
+
   const x = 1 + 2;
   return x;
 }

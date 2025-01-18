@@ -1,6 +1,5 @@
 import ts from "typescript";
 import { map, unreachable, zip } from "./util";
-import assert from "assert";
 
 export type Literal =
   | { kind: "number"; value: number }
@@ -19,11 +18,7 @@ export type Type =
   | { kind: "tuple"; elements: Union[] }
   | { kind: "array"; element: Union }
   | { kind: "object"; fields: Map<string, Union> }
-  | {
-      kind: "record";
-      key: "number" | "string" | "number-or-string";
-      value: Union;
-    };
+  | { kind: "record"; value: Union };
 
 export type Union = Type[];
 
@@ -31,7 +26,6 @@ export type Accessor =
   | { kind: "property"; name: string }
   | { kind: "index"; index: number }
   | { kind: "array-element" }
-  | { kind: "record-keys" }
   | { kind: "record-values" };
 
 export type Occurrence = Accessor[];
@@ -96,9 +90,7 @@ export function typeEqual(a: Type, b: Type): boolean {
     case "object":
       return b.kind === "object" && objectFieldsEqual(a.fields, b.fields);
     case "record":
-      return (
-        b.kind === "record" && a.key === b.key && unionEqual(a.value, b.value)
-      );
+      return b.kind === "record" && unionEqual(a.value, b.value);
     default:
       unreachable(a);
   }
@@ -255,7 +247,7 @@ export function typeCanonicalize(t: Type): Type {
         ),
       };
     case "record":
-      return { kind: "record", key: t.key, value: unionCanonicalize(t.value) };
+      return { kind: "record", value: unionCanonicalize(t.value) };
     default:
       unreachable(t);
   }
@@ -384,16 +376,10 @@ function typeIntersection(a: Type, b: Type): Type | undefined {
       }
     case "record":
       if (b.kind === "record") {
-        if (a.key === b.key) {
-          return {
-            kind: "record",
-            key: a.key,
-            value: unionIntersection(a.value, b.value),
-          };
-        } else {
-          // TODO: different key types shouldn't cause the never type
-          return undefined;
-        }
+        return {
+          kind: "record",
+          value: unionIntersection(a.value, b.value),
+        };
       } else {
         // TODO: intersection with an object
         return undefined;
@@ -452,20 +438,12 @@ export function typeEqualConstructor(a: Type, b: Type): boolean {
   }
 }
 
-function recordKeyToUnion(k: "number" | "string" | "number-or-string"): Union {
-  switch (k) {
-    case "string":
-      return [{ kind: "primitive", primitive: "string" }];
-    case "number":
-      return [{ kind: "primitive", primitive: "number" }];
-    case "number-or-string":
-      return [
-        { kind: "primitive", primitive: "number" },
-        { kind: "primitive", primitive: "string" },
-      ];
-    default:
-      unreachable(k);
-  }
+export function typeIsNumber(t: Type): boolean {
+  return t.kind === "primitive" && t.primitive === "number";
+}
+
+export function typeIsString(t: Type): boolean {
+  return t.kind === "primitive" && t.primitive === "string";
 }
 
 export function typeAccessUnion(t: Type, a: Accessor): Union | undefined {
@@ -480,9 +458,7 @@ export function typeAccessUnion(t: Type, a: Accessor): Union | undefined {
         } else {
           return value;
         }
-      }
-      // TODO: the check about the key is slightly dubious
-      else if (t.kind === "record" && t.key !== "number") {
+      } else if (t.kind === "record") {
         return t.value;
       }
       break;
@@ -508,14 +484,6 @@ export function typeAccessUnion(t: Type, a: Accessor): Union | undefined {
         return t.element;
       } else if (t.kind === "tuple") {
         return unionFlatten(t.elements);
-      }
-      break;
-    case "record-keys":
-      // TODO: object type?
-      if (t.kind === "unknown") {
-        return [{ kind: "unknown" }];
-      } else if (t.kind === "record") {
-        return recordKeyToUnion(t.key);
       }
       break;
     case "record-values":
@@ -571,10 +539,7 @@ export function typeGetArguments(t: Type): [Union, Accessor][] {
         { kind: "property", name } satisfies Accessor,
       ]);
     case "record":
-      return [
-        [recordKeyToUnion(t.key), { kind: "record-keys" }],
-        [t.value, { kind: "record-values" }],
-      ];
+      return [[t.value, { kind: "record-values" }]];
     default:
       unreachable(t);
   }
@@ -608,7 +573,7 @@ export function typeMakeArgumentsUnknown(t: Type): Type {
     case "object":
       return { kind: "object", fields: makeObjectFieldsUnknown(t.fields) };
     case "record":
-      return { kind: "record", key: t.key, value: [{ kind: "unknown" }] };
+      return { kind: "record", value: [{ kind: "unknown" }] };
     default:
       unreachable(t);
   }
@@ -651,16 +616,10 @@ function typeReplaceAt(
         };
       }
       break;
-    case "record-keys":
-      if (t.kind === "record") {
-        throw new Error("TODO");
-      }
-      break;
     case "record-values":
       if (t.kind === "record") {
         return {
           kind: "record",
-          key: t.key,
           value: unionReplaceAt(t.value, o, replacement),
         };
       }
