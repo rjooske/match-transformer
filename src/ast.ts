@@ -1,8 +1,15 @@
 import { DecisionTree } from "./decision-tree";
 import { createEiife } from "./eiife";
 import { MatchTable } from "./match-table";
-import { Literal, Occurrence, Type, Union, unionFlatten } from "./type";
-import { exactlyOne, map, unreachable } from "./util";
+import {
+  Literal,
+  ObjectField,
+  Occurrence,
+  Type,
+  Union,
+  unionFlatten,
+} from "./type";
+import { exactlyOne, filterMap, unreachable } from "./util";
 import assert from "assert";
 import ts from "typescript";
 
@@ -16,6 +23,10 @@ function isTupleType(
 
 function isObjectType(type: ts.Type): type is ts.ObjectType {
   return (type.getFlags() & ts.TypeFlags.Object) !== 0;
+}
+
+function isSymbolOptional(s: ts.Symbol): boolean {
+  return (s.getFlags() & ts.SymbolFlags.Optional) !== 0;
 }
 
 function createLogicalAnds(expressions: ts.Expression[]): ts.BinaryExpression {
@@ -97,6 +108,32 @@ function tsTypeToLiteral(t: ts.Type): Literal | undefined {
   }
 }
 
+function replaceBooleanLiteralsWithPrimitive(u: Union): Union {
+  let hasTrue = false;
+  let hasFalse = false;
+  for (const t of u) {
+    if (t.kind === "literal" && t.literal.kind === "boolean") {
+      if (t.literal.value) {
+        hasTrue = true;
+      } else {
+        hasFalse = true;
+      }
+    }
+  }
+
+  if (!(hasTrue && hasFalse)) {
+    return Array.from(u);
+  }
+
+  const newUnion: Union = [{ kind: "primitive", primitive: "boolean" }];
+  for (const t of u) {
+    if (!(t.kind === "literal" && t.literal.kind === "boolean")) {
+      newUnion.push(t);
+    }
+  }
+  return newUnion;
+}
+
 function tsTypeToUnion(
   typeChecker: ts.TypeChecker,
   t: ts.Type,
@@ -152,15 +189,24 @@ function tsTypeToUnion(
   // Check if the type is object AFTER checking if the type is array, tuple, or
   // record since they an object type as well
   if (isObjectType(t)) {
-    const fields = new Map<string, Union>();
+    const fields = new Map<string, ObjectField>();
     for (const symbol of t.getProperties()) {
       const fieldName = symbol.getName();
       const fieldType = typeChecker.getTypeOfSymbol(symbol);
-      const fieldUnion = tsTypeToUnion(typeChecker, fieldType);
+      let fieldUnion = tsTypeToUnion(typeChecker, fieldType);
       if (fieldUnion === undefined) {
         return undefined;
       }
-      fields.set(fieldName, fieldUnion);
+      const optional = isSymbolOptional(symbol);
+      if (optional) {
+        fieldUnion = fieldUnion.filter(
+          (t) => !(t.kind === "literal" && t.literal.kind === "undefined"),
+        );
+      }
+      fields.set(fieldName, {
+        union: fieldUnion,
+        optional: isSymbolOptional(symbol),
+      });
     }
     return [{ kind: "object", fields }];
   }
@@ -176,7 +222,7 @@ function tsTypeToUnion(
       }
       unions.push(union);
     }
-    return unionFlatten(unions);
+    return replaceBooleanLiteralsWithPrimitive(unionFlatten(unions));
   }
 }
 
@@ -327,12 +373,14 @@ function createTest(t: Type, testee: ts.Expression): ts.Expression {
           ts.factory.createStringLiteral("object"),
         ),
         ts.factory.createStrictInequality(testee, ts.factory.createNull()),
-        ...map(t.fields.keys(), (k) =>
-          ts.factory.createBinaryExpression(
-            ts.factory.createStringLiteral(k),
-            ts.SyntaxKind.InKeyword,
-            testee,
-          ),
+        ...filterMap(t.fields.entries(), ([k, v]) =>
+          v.optional
+            ? undefined
+            : ts.factory.createBinaryExpression(
+                ts.factory.createStringLiteral(k),
+                ts.SyntaxKind.InKeyword,
+                testee,
+              ),
         ),
       ]);
     case "record":
@@ -361,10 +409,19 @@ function createTestAtOccurrence(
 
   switch (a.kind) {
     case "property":
-      return createTestAtOccurrence(
-        t,
-        o,
-        ts.factory.createPropertyAccessExpression(testee, a.name),
+      return ts.factory.createLogicalOr(
+        ts.factory.createLogicalNot(
+          ts.factory.createBinaryExpression(
+            ts.factory.createStringLiteral(a.name),
+            ts.SyntaxKind.InKeyword,
+            testee,
+          ),
+        ),
+        createTestAtOccurrence(
+          t,
+          o,
+          ts.factory.createPropertyAccessExpression(testee, a.name),
+        ),
       );
     case "index":
       return createTestAtOccurrence(
@@ -444,8 +501,6 @@ export function decisionTreeToExpression(
     return ts.factory.createPrefixMinus(ts.factory.createNumericLiteral(1));
   } else if (d.kind === "success") {
     return ts.factory.createNumericLiteral(d.caseIndex);
-  } else if (d.kind === "skip") {
-    return decisionTreeToExpression(d.next, testee);
   }
 
   return ts.factory.createConditionalExpression(

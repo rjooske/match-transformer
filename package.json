@@ -1,5 +1,5 @@
 {
-  "name": "transformer-playground",
+  "name": "match-transformer",
   "version": "1.0.0",
   "main": "out/index.js",
   "types": "out/index.d.js",

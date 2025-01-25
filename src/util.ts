@@ -27,6 +27,18 @@ export function* map<T, U>(
   }
 }
 
+export function* filterMap<T, U>(
+  ts: Iterable<T>,
+  f: (t: T) => U | undefined,
+): Generator<U, void, void> {
+  for (const t of ts) {
+    const u = f(t);
+    if (u !== undefined) {
+      yield u;
+    }
+  }
+}
+
 export function every<T>(
   ts: Iterable<T>,
   predicate: (t: T) => boolean,

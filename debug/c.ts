@@ -1,8 +1,8 @@
-function g1(x: number) {
-  let y = 0;
-  const array = ["hello"];
-  match<number, void>(x)
-    .case<1>(() => (y = 1))
-    .default(() => array.push("world"));
-  console.log(y, array);
+import { match } from "../src/match";
+
+function f(x: unknown): number {
+  return match(x)
+    .returns<number>()
+    .case<{ foo?: number; bar?: boolean }>(() => 0)
+    .default(() => -1);
 }

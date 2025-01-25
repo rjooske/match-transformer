@@ -11,19 +11,21 @@ export type Literal =
 
 export type Primitive = "string" | "number" | "bigint" | "boolean";
 
+export type ObjectField = { union: Union; optional: boolean };
+
 export type Type =
   | { kind: "unknown" }
   | { kind: "literal"; literal: Literal }
   | { kind: "primitive"; primitive: Primitive }
   | { kind: "tuple"; elements: Union[] }
   | { kind: "array"; element: Union }
-  | { kind: "object"; fields: Map<string, Union> }
+  | { kind: "object"; fields: Map<string, ObjectField> }
   | { kind: "record"; value: Union };
 
 export type Union = Type[];
 
 export type Accessor =
-  | { kind: "property"; name: string }
+  | { kind: "property"; name: string; optional: boolean }
   | { kind: "index"; index: number }
   | { kind: "array-element" }
   | { kind: "record-values" };
@@ -60,15 +62,21 @@ export function primitiveEqual(a: Primitive, b: Primitive): boolean {
 }
 
 function objectFieldsEqual(
-  a: Map<string, Union>,
-  b: Map<string, Union>,
+  a: Map<string, ObjectField>,
+  b: Map<string, ObjectField>,
 ): boolean {
   if (a.size !== b.size) {
     return false;
   }
   for (const [ak, av] of a.entries()) {
     const bv = b.get(ak);
-    if (!(bv !== undefined && unionEqual(av, bv))) {
+    if (
+      !(
+        bv !== undefined &&
+        av.optional === bv.optional &&
+        unionEqual(av.union, bv.union)
+      )
+    ) {
       return false;
     }
   }
@@ -169,12 +177,18 @@ function tupleIsSubtype(as: Union[], bs: Union[]): boolean {
 }
 
 function objectIsSubtype(
-  a: Map<string, Union>,
-  b: Map<string, Union>,
+  a: Map<string, ObjectField>,
+  b: Map<string, ObjectField>,
 ): boolean {
   for (const [ak, av] of a.entries()) {
     const bv = b.get(ak);
-    if (!(bv !== undefined && unionIsSubtype(av, bv))) {
+    if (
+      !(
+        bv !== undefined &&
+        unionIsSubtype(av.union, bv.union) &&
+        !(av.optional && !bv.optional)
+      )
+    ) {
       return false;
     }
   }
@@ -210,7 +224,10 @@ export function typeIsSubtype(a: Type, b: Type): boolean {
       // TODO: do a bit more research about the key type
       return (
         (a.kind === "object" &&
-          unionIsSubtype(unionFlatten(a.fields.values()), b.value)) ||
+          unionIsSubtype(
+            unionFlatten(map(a.fields.values(), (v) => v.union)),
+            b.value,
+          )) ||
         (a.kind === "record" && unionIsSubtype(a.value, b.value))
       );
     default:
@@ -243,7 +260,13 @@ export function typeCanonicalize(t: Type): Type {
       return {
         kind: "object",
         fields: new Map(
-          map(t.fields.entries(), ([k, v]) => [k, unionCanonicalize(v)]),
+          map(t.fields.entries(), ([k, v]) => [
+            k,
+            {
+              union: unionCanonicalize(v.union),
+              optional: v.optional,
+            } satisfies ObjectField,
+          ]),
         ),
       };
     case "record":
@@ -310,6 +333,22 @@ export function typeMaxima(ts: Type[]): Type[] {
   return maxima;
 }
 
+export function unionMinima(us: Union[]): Union[] {
+  const minima: Union[] = [];
+  for (const u1 of us) {
+    let isMinimum = true;
+    for (const u2 of us) {
+      if (!(!unionIsSubtype(u2, u1) || unionEqual(u1, u2))) {
+        isMinimum = false;
+      }
+    }
+    if (isMinimum) {
+      minima.push(u1);
+    }
+  }
+  return minima;
+}
+
 function typeIntersection(a: Type, b: Type): Type | undefined {
   switch (a.kind) {
     case "unknown":
@@ -362,11 +401,14 @@ function typeIntersection(a: Type, b: Type): Type | undefined {
       if (b.kind === "object") {
         const fields = new Map(a.fields.entries());
         for (const [bk, bv] of b.fields.entries()) {
-          const u = fields.get(bk);
-          if (u === undefined) {
+          const f = fields.get(bk);
+          if (f === undefined) {
             fields.set(bk, bv);
           } else {
-            fields.set(bk, unionIntersection(u, bv));
+            fields.set(bk, {
+              union: unionIntersection(f.union, bv.union),
+              optional: f.optional && bv.optional,
+            });
           }
         }
         return { kind: "object", fields };
@@ -403,8 +445,8 @@ export function unionIntersection(a: Union, b: Union): Union {
 }
 
 function objectFieldNamesEqual(
-  a: Map<string, Union>,
-  b: Map<string, Union>,
+  a: Map<string, ObjectField>,
+  b: Map<string, ObjectField>,
 ): boolean {
   if (a.size !== b.size) {
     return false;
@@ -452,11 +494,11 @@ export function typeAccessUnion(t: Type, a: Accessor): Union | undefined {
       if (t.kind === "unknown") {
         return [{ kind: "unknown" }];
       } else if (t.kind === "object") {
-        const value = t.fields.get(a.name);
-        if (value === undefined) {
+        const f = t.fields.get(a.name);
+        if (f === undefined) {
           return [{ kind: "unknown" }];
         } else {
-          return value;
+          return f.union;
         }
       } else if (t.kind === "record") {
         return t.value;
@@ -534,9 +576,9 @@ export function typeGetArguments(t: Type): [Union, Accessor][] {
     case "array":
       return [[t.element, { kind: "array-element" }]];
     case "object":
-      return Array.from(t.fields.entries()).map(([name, v]) => [
-        v,
-        { kind: "property", name } satisfies Accessor,
+      return Array.from(t.fields.entries()).map(([name, f]) => [
+        f.union,
+        { kind: "property", name, optional: f.optional } satisfies Accessor,
       ]);
     case "record":
       return [[t.value, { kind: "record-values" }]];
@@ -546,11 +588,11 @@ export function typeGetArguments(t: Type): [Union, Accessor][] {
 }
 
 function makeObjectFieldsUnknown(
-  fields: Map<string, Union>,
-): Map<string, Union> {
-  const result = new Map<string, Union>();
-  for (const k of fields.keys()) {
-    result.set(k, [{ kind: "unknown" }]);
+  fields: Map<string, ObjectField>,
+): Map<string, ObjectField> {
+  const result = new Map<string, ObjectField>();
+  for (const [k, v] of fields.entries()) {
+    result.set(k, { union: [{ kind: "unknown" }], optional: v.optional });
   }
   return result;
 }
@@ -579,6 +621,10 @@ export function typeMakeArgumentsUnknown(t: Type): Type {
   }
 }
 
+export function unionMakeArgumentsUnknown(u: Union): Union {
+  return u.map(typeMakeArgumentsUnknown);
+}
+
 function typeReplaceAt(
   t: Type,
   a: Accessor,
@@ -589,11 +635,14 @@ function typeReplaceAt(
     case "property":
       if (t.kind === "object") {
         const fields = new Map(t.fields.entries());
-        const union = fields.get(a.name);
-        if (union === undefined) {
-          fields.set(a.name, replacement);
+        const f = fields.get(a.name);
+        if (f === undefined) {
+          fields.set(a.name, { union: replacement, optional: a.optional });
         } else {
-          fields.set(a.name, unionReplaceAt(union, o, replacement));
+          fields.set(a.name, {
+            union: unionReplaceAt(f.union, o, replacement),
+            optional: f.optional,
+          });
         }
         return { kind: "object", fields };
       }
